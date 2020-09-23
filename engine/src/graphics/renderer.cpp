@@ -25,6 +25,12 @@ namespace engine
 
 	void renderer::draw()
 	{
+		if (cmd_buffer_changed)
+		{
+			recreate_swap_chain();
+			cmd_buffer_changed = false;
+		}
+
 		vkWaitForFences(device, 1, &in_flight_fs[current_frame], VK_TRUE, UINT64_MAX);
 
 		uint32_t image_index;
@@ -72,7 +78,7 @@ namespace engine
 		present_i.pWaitSemaphores = signal_ss;
 
 		VkSwapchainKHR swap_chains[] = { swap_chain };
-		
+
 		present_i.swapchainCount = 1;
 		present_i.pSwapchains = swap_chains;
 		present_i.pImageIndices = &image_index;
@@ -89,43 +95,66 @@ namespace engine
 		current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 
+	int renderer::add_object(int mesh_i)
+	{
+		cmd_buffer_changed = true;
+
+		int i = 0;
+		for (int r = 0; r < renderer_objects.size(); r++)
+		{
+			if (renderer_objects[r].mesh_id == -1) // ID for invalid mesh
+			{
+				i = r;
+			}
+		}
+		if (i == rd.mesh_data.size())
+		{
+			rd.add_object(mesh_i);
+			renderer_objects.push_back(renderer_object(i, &rd.mesh_data[i]));
+		}
+		else
+		{
+			rd.mesh_data[i] = mesh_ubo();
+			renderer_objects[i] = renderer_object(i, &rd.mesh_data[i]);
+		}
+
+		mesh_instances[mesh_i]++;
+
+		return i;
+	}
+	mesh_ubo& renderer::get_object(int mesh_i)
+	{
+		return *renderer_objects[mesh_i].ubo_data;
+	}
+
+	void renderer::add_material_data(material m)
+	{
+		rd.materials.push_back(m);
+	}
+	void renderer::add_mesh_data(std::vector<vertex>& d, std::vector<int>& i)
+	{
+		rd.add_mesh(d, i);
+	}
 	renderer::renderer(window* w) : glfw_window(w)
 	{
-		#ifdef NDEBUG
-			debug = false;
-		#else
-			debug = true;
-		#endif
+#ifdef NDEBUG
+		debug = false;
+#else
+		debug = true;
+#endif
 
 		glfwSetWindowUserPointer(glfw_window->get_window(), this);
 		glfwSetFramebufferSizeCallback(glfw_window->get_window(), renderer::framebuffer_callback);
 
-		create_instance();
-		setup_debug_messenger();
-		create_surface();
-		select_physical_device();
-		create_logical_device();
-		create_swap_chain();
-		create_image_views();
-		create_render_pass();
-		create_descriptor_set_layout();
-		create_graphics_pipeline();
-		create_framebuffers();
-		create_command_pool();
-		create_vertex_buffer();
-		create_index_buffer();
-		create_uniform_buffers();
-		create_descriptor_pool();
-		create_descriptor_sets();
-		create_command_buffers();
-		create_sync_objects();
+		init();
 	}
 
 	renderer::~renderer()
 	{
 		cleanup_swap_chain();
 
-		vkDestroyDescriptorSetLayout(device, descriptor_set_layout, nullptr);
+		vkDestroyDescriptorSetLayout(device, descriptor_set_layouts[0], nullptr);
+		vkDestroyDescriptorSetLayout(device, descriptor_set_layouts[1], nullptr);
 
 		vkDestroyBuffer(device, vertex_buffer, nullptr);
 		vkFreeMemory(device, vertex_buffer_memory, nullptr);
@@ -148,6 +177,29 @@ namespace engine
 
 		vkDestroySurfaceKHR(vk_instance, surface, nullptr);
 		vkDestroyInstance(vk_instance, nullptr);
+	}
+
+	void renderer::init()
+	{
+		create_instance();
+		setup_debug_messenger();
+		create_surface();
+		select_physical_device();
+		create_logical_device();
+		create_swap_chain();
+		create_image_views();
+		create_render_pass();
+		create_descriptor_set_layout();
+		create_graphics_pipeline();
+		create_framebuffers();
+		create_command_pool();
+		create_vertex_buffer();
+		create_index_buffer();
+		create_uniform_buffers();
+		create_descriptor_pool();
+		create_descriptor_sets();
+		create_command_buffers();
+		create_sync_objects();
 	}
 
 	void renderer::create_instance()
@@ -425,18 +477,37 @@ namespace engine
 	}
 	void renderer::create_descriptor_set_layout()
 	{
-		VkDescriptorSetLayoutBinding ubo_layout_binding{};
-		ubo_layout_binding.binding = 0;
-		ubo_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		ubo_layout_binding.descriptorCount = 1;
-		ubo_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		descriptor_set_layouts.push_back(VkDescriptorSetLayout());
+		descriptor_set_layouts.push_back(VkDescriptorSetLayout());
+		descriptor_sets.push_back(descriptor_set_pair());
+		descriptor_sets.push_back(descriptor_set_pair());
 
-		VkDescriptorSetLayoutCreateInfo layout_ci{};
-		layout_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-		layout_ci.bindingCount = 1;
-		layout_ci.pBindings = &ubo_layout_binding;
+		VkDescriptorSetLayoutBinding mat_ubo_layout_binding{};
+		mat_ubo_layout_binding.binding = 0;
+		mat_ubo_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		mat_ubo_layout_binding.descriptorCount = 1;
+		mat_ubo_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-		if (vkCreateDescriptorSetLayout(device, &layout_ci, nullptr, &descriptor_set_layout) != VK_SUCCESS)
+		VkDescriptorSetLayoutCreateInfo mat_layout_ci{};
+		mat_layout_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		mat_layout_ci.bindingCount = 1;
+		mat_layout_ci.pBindings = &mat_ubo_layout_binding;
+
+		if (vkCreateDescriptorSetLayout(device, &mat_layout_ci, nullptr, &descriptor_set_layouts[0]) != VK_SUCCESS)
+			throw std::runtime_error("Descriptor set layout not created");
+
+		VkDescriptorSetLayoutBinding mesh_ubo_layout_binding{};
+		mesh_ubo_layout_binding.binding = 1;
+		mesh_ubo_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		mesh_ubo_layout_binding.descriptorCount = 1;
+		mesh_ubo_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+		VkDescriptorSetLayoutCreateInfo mesh_layout_ci{};
+		mesh_layout_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		mesh_layout_ci.bindingCount = 1;
+		mesh_layout_ci.pBindings = &mesh_ubo_layout_binding;
+
+		if (vkCreateDescriptorSetLayout(device, &mesh_layout_ci, nullptr, &descriptor_set_layouts[1]) != VK_SUCCESS)
 			throw std::runtime_error("Descriptor set layout not created");
 	}
 	void renderer::create_graphics_pipeline()
@@ -541,8 +612,8 @@ namespace engine
 
 		VkPipelineLayoutCreateInfo pipeline_layout_create_info{};
 		pipeline_layout_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		pipeline_layout_create_info.setLayoutCount = 1;
-		pipeline_layout_create_info.pSetLayouts = &descriptor_set_layout;
+		pipeline_layout_create_info.setLayoutCount = 2;
+		pipeline_layout_create_info.pSetLayouts = (VkDescriptorSetLayout*)&descriptor_set_layouts[0];
 
 		if (vkCreatePipelineLayout(device, &pipeline_layout_create_info, nullptr, &pipeline_layout) != VK_SUCCESS)
 			throw std::runtime_error("Pipeline layout not created");
@@ -599,26 +670,14 @@ namespace engine
 		VkCommandPoolCreateInfo pool_ci{};
 		pool_ci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 		pool_ci.queueFamilyIndex = qfs.graphics.value();
-		pool_ci.flags = 0;
+		pool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
 
 		if (vkCreateCommandPool(device, &pool_ci, nullptr, &command_pool) != VK_SUCCESS)
 			throw std::runtime_error("Command pool not created");
 	}
 	void renderer::create_vertex_buffer()
 	{
-		verticies =
-		{
-			vertex(-1, -1, 1, 0, 0),
-			vertex(0, -1, 1, 0, 0),
-			vertex(-1, 0, 1, 0, 0),
-			vertex(0, 0, 1, 0, 0),
-		};
-		indicies =
-		{
-			0, 1, 2, 2, 1, 3
-		};
-
-		VkDeviceSize buffer_size = sizeof(verticies[0]) * verticies.size();
+		VkDeviceSize buffer_size = sizeof(rd.mesh_verticies[0]) * rd.mesh_verticies.size();
 
 		VkBuffer staging_buffer;
 		VkDeviceMemory staging_buffer_memory;
@@ -627,7 +686,7 @@ namespace engine
 
 		void* data;
 		vkMapMemory(device, staging_buffer_memory, 0, buffer_size, 0, &data);
-		memcpy(data, verticies.data(), (size_t)buffer_size);
+		memcpy(data, rd.mesh_verticies.data(), (size_t)buffer_size);
 		vkUnmapMemory(device, staging_buffer_memory);
 
 		create_buffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, vertex_buffer, vertex_buffer_memory);
@@ -638,7 +697,7 @@ namespace engine
 	}
 	void renderer::create_index_buffer()
 	{
-		VkDeviceSize buffer_size = sizeof(indicies[0]) * indicies.size();
+		VkDeviceSize buffer_size = sizeof(rd.mesh_indicies[0]) * rd.mesh_indicies.size();
 
 		VkBuffer staging_buffer;
 		VkDeviceMemory staging_buffer_memory;
@@ -647,7 +706,7 @@ namespace engine
 
 		void* data;
 		vkMapMemory(device, staging_buffer_memory, 0, buffer_size, 0, &data);
-		memcpy(data, indicies.data(), (size_t)buffer_size);
+		memcpy(data, rd.mesh_indicies.data(), (size_t)buffer_size);
 		vkUnmapMemory(device, staging_buffer_memory);
 
 		create_buffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, index_buffer, index_buffer_memory);
@@ -660,59 +719,103 @@ namespace engine
 	{
 		VkDeviceSize buffer_size = sizeof(ubo);
 
-		uniform_buffers.resize(swap_chain_images.size());
-		uniform_buffers_memory.resize(swap_chain_images.size());
+		mat_uniform_buffers.resize(swap_chain_images.size());
+		mat_uniform_buffers_memory.resize(swap_chain_images.size());
+
+		mesh_uniform_buffers.resize(swap_chain_images.size());
+		mesh_uniform_buffers_memory.resize(swap_chain_images.size());
 
 		for (size_t i = 0; i < swap_chain_images.size(); i++)
-			create_buffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniform_buffers[i], uniform_buffers_memory[i]);
+		{
+			create_buffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, mat_uniform_buffers[i], mat_uniform_buffers_memory[i]);
+			create_buffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, mesh_uniform_buffers[i], mesh_uniform_buffers_memory[i]);
+		}
 	}
 	void renderer::create_descriptor_pool()
 	{
 		VkDescriptorPoolSize pool_size{};
 		pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		pool_size.descriptorCount = static_cast<uint32_t>(swap_chain_images.size());
+		pool_size.descriptorCount = static_cast<uint32_t>(swap_chain_images.size() * descriptor_set_count);
 
 		VkDescriptorPoolCreateInfo pool_ci{};
 		pool_ci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 		pool_ci.poolSizeCount = 1;
 		pool_ci.pPoolSizes = &pool_size;
-		pool_ci.maxSets = static_cast<uint32_t>(swap_chain_images.size());
+		pool_ci.maxSets = static_cast<uint32_t>(swap_chain_images.size() * descriptor_set_count);
 
 		if (vkCreateDescriptorPool(device, &pool_ci, nullptr, &descriptor_pool) != VK_SUCCESS)
 			throw std::runtime_error("Desriptor pool not created");
 	}
 	void renderer::create_descriptor_sets()
 	{
-		std::vector<VkDescriptorSetLayout> layouts(swap_chain_images.size(), descriptor_set_layout);
-		VkDescriptorSetAllocateInfo alloc_i{};
-		alloc_i.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		alloc_i.descriptorPool = descriptor_pool;
-		alloc_i.descriptorSetCount = static_cast<uint32_t>(swap_chain_images.size());
-		alloc_i.pSetLayouts = layouts.data();
+		std::vector<VkDescriptorSetLayout> mat_layouts(swap_chain_images.size(), descriptor_set_layouts[0]);
+		VkDescriptorSetAllocateInfo mat_alloc_i{};
+		mat_alloc_i.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		mat_alloc_i.descriptorPool = descriptor_pool;
+		mat_alloc_i.descriptorSetCount = static_cast<uint32_t>(swap_chain_images.size());
+		mat_alloc_i.pSetLayouts = mat_layouts.data();
+
+		std::vector<VkDescriptorSetLayout> mesh_layouts(swap_chain_images.size(), descriptor_set_layouts[1]);
+		VkDescriptorSetAllocateInfo mesh_alloc_i{};
+		mesh_alloc_i.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		mesh_alloc_i.descriptorPool = descriptor_pool;
+		mesh_alloc_i.descriptorSetCount = static_cast<uint32_t>(swap_chain_images.size());
+		mesh_alloc_i.pSetLayouts = mesh_layouts.data();
 
 		descriptor_sets.resize(swap_chain_images.size());
-		if (vkAllocateDescriptorSets(device, &alloc_i, descriptor_sets.data()) != VK_SUCCESS)
-			throw std::runtime_error("Descriptor sets not allocated");
+
+		std::vector<VkDescriptorSet> temp_ma_ds;
+		for (size_t i = 0; i < swap_chain_images.size(); i++)
+			temp_ma_ds.push_back(descriptor_sets[i].mat_descriptor_set);
+
+		std::vector<VkDescriptorSet> temp_me_ds;
+		for (size_t i = 0; i < swap_chain_images.size(); i++)
+			temp_me_ds.push_back(descriptor_sets[i].mesh_descriptor_set);
+
+		if (vkAllocateDescriptorSets(device, &mat_alloc_i, temp_ma_ds.data()) != VK_SUCCESS)
+			throw std::runtime_error("Material descriptor sets not allocated");
+		if (vkAllocateDescriptorSets(device, &mesh_alloc_i, temp_me_ds.data()) != VK_SUCCESS)
+			throw std::runtime_error("Mesh descriptor sets not allocated");
 
 		for (size_t i = 0; i < swap_chain_images.size(); i++)
 		{
-			VkDescriptorBufferInfo buffer_i{};
-			buffer_i.buffer = uniform_buffers[i];
-			buffer_i.offset = 0;
-			buffer_i.range = sizeof(ubo);
+			descriptor_sets[i].mat_descriptor_set = temp_ma_ds[i];
+			descriptor_sets[i].mesh_descriptor_set = temp_me_ds[i];
 
-			VkWriteDescriptorSet descriptor_write{};
-			descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			descriptor_write.dstSet = descriptor_sets[i];
-			descriptor_write.dstBinding = 0;
-			descriptor_write.dstArrayElement = 0;
+			VkDescriptorBufferInfo mat_buffer_i{};
+			mat_buffer_i.buffer = mat_uniform_buffers[i];
+			mat_buffer_i.offset = 0;
+			mat_buffer_i.range = sizeof(material);
 
-			descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			descriptor_write.descriptorCount = 1;
+			VkWriteDescriptorSet mat_descriptor_write{};
+			mat_descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			mat_descriptor_write.dstSet = descriptor_sets[i].mat_descriptor_set;
+			mat_descriptor_write.dstBinding = 0;
+			mat_descriptor_write.dstArrayElement = 0;
 
-			descriptor_write.pBufferInfo = &buffer_i;
+			mat_descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			mat_descriptor_write.descriptorCount = 1;
 
-			vkUpdateDescriptorSets(device, 1, &descriptor_write, 0, nullptr);
+			mat_descriptor_write.pBufferInfo = &mat_buffer_i;
+
+			VkDescriptorBufferInfo mesh_buffer_i{};
+			mesh_buffer_i.buffer = mesh_uniform_buffers[i];
+			mesh_buffer_i.offset = 0;
+			mesh_buffer_i.range = sizeof(mesh_ubo);
+
+			VkWriteDescriptorSet mesh_descriptor_write{};
+			mesh_descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			mesh_descriptor_write.dstSet = descriptor_sets[i].mesh_descriptor_set;
+			mesh_descriptor_write.dstBinding = 1;
+			mesh_descriptor_write.dstArrayElement = 0;
+
+			mesh_descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			mesh_descriptor_write.descriptorCount = 1;
+
+			mesh_descriptor_write.pBufferInfo = &mesh_buffer_i;
+
+			vkUpdateDescriptorSets(device, 1, &mat_descriptor_write, 0, nullptr);
+			vkUpdateDescriptorSets(device, 1, &mesh_descriptor_write, 0, nullptr);
 		}
 	}
 	void renderer::create_command_buffers()
@@ -757,10 +860,25 @@ namespace engine
 			VkDeviceSize offsets[] = { 0 };
 
 			vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
-			vkCmdBindIndexBuffer(command_buffers[i], index_buffer, 0, VK_INDEX_TYPE_UINT16);
+			vkCmdBindIndexBuffer(command_buffers[i], index_buffer, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 2, (VkDescriptorSet*)&descriptor_sets[i], 0, nullptr);
 
-			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
-			vkCmdDrawIndexed(command_buffers[i], static_cast<uint32_t>(indicies.size()), 1, 0, 0, 0);
+			for (size_t j = 0; j < rd.mesh_index_start.size(); j++)
+			{
+				uint32_t ic = 0;
+				if (j == rd.mesh_index_start.size() - 1)
+					ic = (uint32_t)((rd.mesh_indicies.size()) - rd.mesh_index_start[j]);
+				else
+					ic = (uint32_t)(rd.mesh_index_start[j + 1] - rd.mesh_index_start[j]);
+
+				uint32_t is = mesh_instances[j];
+				uint32_t fi = (uint32_t)(rd.mesh_index_start[j] - rd.mesh_index_start[0]);
+				uint32_t vo = (uint32_t)(rd.mesh_vertex_start[j] - rd.mesh_vertex_start[0]);
+				uint32_t fis = j;
+
+				//vkCmdDrawIndexed(command_buffers[i], ic, is, fi, vo, fis);
+				vkCmdDrawIndexed(command_buffers[i], ic, is, fi, vo, fis);
+			}
 
 			vkCmdEndRenderPass(command_buffers[i]);
 
@@ -809,6 +927,8 @@ namespace engine
 		create_render_pass();
 		create_graphics_pipeline();
 		create_framebuffers();
+		create_vertex_buffer();
+		create_index_buffer();
 		create_uniform_buffers();
 		create_descriptor_pool();
 		create_descriptor_sets();
@@ -832,20 +952,27 @@ namespace engine
 
 		for (size_t i = 0; i < swap_chain_images.size(); i++)
 		{
-			vkDestroyBuffer(device, uniform_buffers[i], nullptr);
-			vkFreeMemory(device, uniform_buffers_memory[i], nullptr);
+			vkDestroyBuffer(device, mat_uniform_buffers[i], nullptr);
+			vkFreeMemory(device, mat_uniform_buffers_memory[i], nullptr);
+
+			vkDestroyBuffer(device, mesh_uniform_buffers[i], nullptr);
+			vkFreeMemory(device, mesh_uniform_buffers_memory[i], nullptr);
 		}
+
+		vkDestroyDescriptorPool(device, descriptor_pool, nullptr);
 	}
 
 	void renderer::update_uniform_buffer(uint32_t ci)
 	{
-		ubo u{};
-		u.pos = vector2(0.1, 0.1);
+		void* mat_data;
+		vkMapMemory(device, mat_uniform_buffers_memory[ci], 0, sizeof(material), 0, &mat_data);
+		memcpy(mat_data, &rd.materials[0], sizeof(material));
+		vkUnmapMemory(device, mat_uniform_buffers_memory[ci]);
 
-		void* data;
-		vkMapMemory(device, uniform_buffers_memory[ci], 0, sizeof(u), 0, &data);
-		memcpy(data, &u, sizeof(u));
-		vkUnmapMemory(device, uniform_buffers_memory[ci]);
+		void* mesh_data;
+		vkMapMemory(device, mesh_uniform_buffers_memory[ci], 0, sizeof(mesh_data), 0, &mesh_data);
+		memcpy(mesh_data, &rd.mesh_data[0], sizeof(mesh_data));
+		vkUnmapMemory(device, mesh_uniform_buffers_memory[ci]);
 	}
 
 	std::vector<const char*> renderer::get_required_extensions()
@@ -1019,7 +1146,7 @@ namespace engine
 		buffer_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 		if (vkCreateBuffer(device, &buffer_ci, nullptr, &b) != VK_SUCCESS)
-			throw std::runtime_error("Vertex buffer not created");
+			throw std::runtime_error("Buffer not created");
 
 		VkMemoryRequirements memory_requirements;
 		vkGetBufferMemoryRequirements(device, b, &memory_requirements);
@@ -1030,7 +1157,7 @@ namespace engine
 		allocate_i.memoryTypeIndex = find_memory_type(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
 		if (vkAllocateMemory(device, &allocate_i, nullptr, &bm) != VK_SUCCESS)
-			throw std::runtime_error("Vertex buffer memory not allocated");
+			throw std::runtime_error("Buffer memory not allocated");
 
 		vkBindBufferMemory(device, b, bm, 0);
 	}

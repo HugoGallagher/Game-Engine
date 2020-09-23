@@ -4,8 +4,18 @@
 
 #include "maths/types/vector3.h"
 
+#include "graphics/renderer.h"
+
 namespace engine
 {
+	struct core_game_objects
+	{
+		renderer* r;
+		window* w;
+
+		core_game_objects(renderer* rp, window* wp) : r(rp), w(wp) {}
+	};
+
 	typedef uint16_t component_index;
 
 	extern int id_counter;
@@ -117,7 +127,7 @@ namespace engine
 		component_manager() : component_id(id_counter) { id_counter++; }
 	};
 
-	typedef void (*linked_function)(float dt, entity&, std::vector<entity>&);
+	typedef void (*linked_function)(float dt, entity&, core_game_objects*);
 
 	struct system
 	{
@@ -133,6 +143,8 @@ namespace engine
 	class ecs_manager
 	{
 	public:
+		core_game_objects* cgo;
+
 		std::vector<entity> entities;
 		std::tuple<component_manager<Ts>...> components_tuple;
 		std::vector<component_manager<component>*> components;
@@ -144,7 +156,7 @@ namespace engine
 			{
 				//std::cout << "System: " << s.mask.mask[0] << std::endl << "Entity: " << e.mask.mask[0] << std::endl << std::endl;
 				if (s.mask | e.mask)
-					s.function(dt, e, entities);
+					s.function(dt, e, cgo);
 			}}
 		}
 		

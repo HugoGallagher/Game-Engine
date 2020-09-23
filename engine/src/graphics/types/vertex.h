@@ -9,12 +9,12 @@ namespace engine
 {
 	struct vertex
 	{
-		vector2 pos;
-		vector3 col;
+		vector3 pos;
+		short material_id;
 
 		vertex() {}
-		vertex(float x, float y) : pos(vector2(x, y)) {}
-		vertex(float x, float y, float r, float g, float b) : pos(vector2(x, y)), col(vector3(r, g, b)) {}
+		vertex(float x, float y, float z) : pos(vector3(x, y, z)), material_id(0) {}
+		vertex(float x, float y, float z, short material_id) : pos(vector3(x, y, z)),material_id(material_id) {}
 
 		static VkVertexInputBindingDescription get_binding_description()
 		{
@@ -30,13 +30,13 @@ namespace engine
 			std::array<VkVertexInputAttributeDescription, 2> attribute_ds{};
 			attribute_ds[0].binding = 0;
 			attribute_ds[0].location = 0;
-			attribute_ds[0].format = VK_FORMAT_R32G32_SFLOAT;
+			attribute_ds[0].format = VK_FORMAT_R32G32B32_SFLOAT;
 			attribute_ds[0].offset = offsetof(vertex, pos);
 
 			attribute_ds[1].binding = 0;
 			attribute_ds[1].location = 1;
-			attribute_ds[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-			attribute_ds[1].offset = offsetof(vertex, col);
+			attribute_ds[1].format = VK_FORMAT_R32_SINT;
+			attribute_ds[1].offset = offsetof(vertex, material_id);
 
 			return attribute_ds;
 		}

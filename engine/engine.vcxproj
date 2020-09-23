@@ -101,6 +101,9 @@
     <ClInclude Include="dependencies\glfw\include\GLFW\glfw3native.h" />
     <ClInclude Include="src\ecs\ecs.h" />
     <ClInclude Include="src\graphics\renderer.h" />
+    <ClInclude Include="src\graphics\renderer_data.h" />
+    <ClInclude Include="src\graphics\types\material.h" />
+    <ClInclude Include="src\graphics\types\mesh_ubo.h" />
     <ClInclude Include="src\graphics\types\ubo.h" />
     <ClInclude Include="src\graphics\types\vertex.h" />
     <ClInclude Include="src\include\engine.h" />

@@ -2,6 +2,9 @@
 
 #include "maths/types/vector3.h"
 
+#include "graphics/types/material.h"
+#include "graphics/types/vertex.h"
+
 #include "include/engine.h"
 
 struct transform
@@ -36,7 +39,7 @@ struct input {};
 namespace ecs_systems
 {
 	// transform, motion, input
-	void controller(float dt, engine::entity& e, std::vector<engine::entity>& es)
+	void controller(float dt, engine::entity& e, engine::core_game_objects* cgo)
 	{
 		if (engine::input::key_down('W'))
 			e.get<motion>().velocity.y -= e.get<motion>().speed;
@@ -49,7 +52,7 @@ namespace ecs_systems
 	}
 
 	// transform, motion
-	void move(float dt, engine::entity& e, std::vector<engine::entity>& es)
+	void move(float dt, engine::entity& e, engine::core_game_objects* cgo)
 	{
 		engine::vector3 vel = e.get<motion>().velocity * dt;
 		e.get<transform>().position = e.get<transform>().position + vel;
@@ -57,12 +60,20 @@ namespace ecs_systems
 	}
 
 	//transform
-	void print_coords(float dt, engine::entity& e, std::vector<engine::entity>& es)
+	void print_coords(float dt, engine::entity& e, engine::core_game_objects* cgo)
 	{
 		//std::cout << e.get<transform>().position << std::endl;
 
 		engine::vector3 pos = e.get<transform>().position;
-		//std::cout << pos.x << ", " << pos.y << ", " << pos.z << std::endl;
+		std::cout << pos.x << ", " << pos.y << ", " << pos.z << std::endl;
+	}
+
+	//transform, mesh
+	void update_mesh_ubo(float dt, engine::entity& e, engine::core_game_objects* cgo)
+	{
+		engine::mesh_ubo& mu = cgo->r->get_object(e.get<mesh>().id);
+		mu.pos.x += e.get<transform>().position.x;
+		mu.pos.y += e.get<transform>().position.y;
 	}
 }
 
@@ -73,10 +84,11 @@ class game
 public:
 	float dt;
 
-	engine::ecs_manager<transform, motion, mesh, input> ecs;
-
 	engine::window window = engine::window(1280, 720, false, "Engine");
 	engine::renderer renderer;
+	engine::core_game_objects cgo = engine::core_game_objects(&renderer, &window);
+
+	engine::ecs_manager<transform, motion, mesh, input> ecs;
 
 	game();
 
@@ -89,16 +101,20 @@ public:
 
 game::game() : renderer(engine::renderer(&window))
 {
-	ecs.add_system<transform, motion, input>(0, ecs_systems::controller);
-	ecs.add_system<transform, motion>(1, ecs_systems::move);
-	ecs.add_system<transform>(2, ecs_systems::print_coords);
-
 	init();
 }
 
 void game::init()
 {
-	engine::entity e1 = ecs.add_entity<transform, motion>(transform(), motion(3));
+	ecs.cgo = &cgo;
+	ecs.add_system<transform, motion, input>(0, ecs_systems::controller);
+	ecs.add_system<transform, motion>(1, ecs_systems::move);
+	ecs.add_system<transform>(2, ecs_systems::print_coords);
+	ecs.add_system<transform, mesh>(2, ecs_systems::update_mesh_ubo);
+
+	engine::entity e1 = ecs.add_entity<transform, motion, mesh>(transform(), motion(3), mesh(0));
+
+	renderer.add_object(0);
 }
 
 void game::exit()

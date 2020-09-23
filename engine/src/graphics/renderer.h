@@ -4,6 +4,9 @@
 
 #include "graphics/types/vertex.h"
 #include "graphics/types/ubo.h"
+#include "graphics/types/material.h"
+#include "graphics/types/mesh_ubo.h"
+#include "graphics/renderer_data.h"
 
 #include "window.h"
 
@@ -24,12 +27,30 @@ namespace engine
 		std::vector<VkPresentModeKHR> present_modes;
 	};
 
+	struct descriptor_set_pair
+	{
+		VkDescriptorSet mat_descriptor_set;
+		VkDescriptorSet mesh_descriptor_set;
+	};
+
+	struct renderer_object
+	{
+		int mesh_id;
+		mesh_ubo* ubo_data;
+
+		renderer_object(int i, mesh_ubo* mup) : mesh_id(i), ubo_data(mup) {}
+	};
+
 	class renderer
 	{
 	public:
 		//static const std::vector<const char*> validation_layers;
 
 		bool debug;
+
+		renderer_data rd;
+		std::vector<renderer_object> renderer_objects;
+		std::vector<int> mesh_instances = std::vector<int>(255);
 
 		VkInstance vk_instance;
 		VkDebugUtilsMessengerEXT debug_messenger;
@@ -49,7 +70,6 @@ namespace engine
 		VkSurfaceKHR surface;
 
 		VkRenderPass render_pass;
-		VkDescriptorSetLayout descriptor_set_layout;
 		VkPipelineLayout pipeline_layout;
 		VkPipeline graphics_pipeline;
 
@@ -67,19 +87,26 @@ namespace engine
 		VkDeviceMemory index_buffer_memory;
 
 		VkDescriptorPool descriptor_pool;
-		std::vector<VkDescriptorSet> descriptor_sets;
+		std::vector<descriptor_set_pair> descriptor_sets;
+		std::vector<VkDescriptorSetLayout> descriptor_set_layouts; // 0 = mat, 1 = mesh
 
-		std::vector<VkBuffer> uniform_buffers;
-		std::vector<VkDeviceMemory> uniform_buffers_memory;
+		std::vector<VkBuffer> mat_uniform_buffers;
+		std::vector<VkDeviceMemory> mat_uniform_buffers_memory;
+		std::vector<VkBuffer> mesh_uniform_buffers;
+		std::vector<VkDeviceMemory> mesh_uniform_buffers_memory;
 
 		bool framebuffer_resized = false;
 		std::vector<VkFramebuffer> swap_chain_framebuffers;
 
-		std::vector<vertex> verticies;
-		std::vector<uint16_t> indicies;
+		//std::vector<vertex> verticies;
+		//std::vector<uint16_t> indicies;
+
+		int descriptor_set_count = 2;
 
 		renderer(window* w);
 		~renderer();
+
+		void init();
 
 		static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT severity, VkDebugUtilsMessageTypeFlagsEXT type, const VkDebugUtilsMessengerCallbackDataEXT* callback_data, void* user_data)
 		{
@@ -94,6 +121,12 @@ namespace engine
 		{
 			vkDeviceWaitIdle(device);
 		}
+
+		int add_object(int mesh_i);
+		mesh_ubo& get_object(int mesh_i);
+
+		void add_mesh_data(std::vector<vertex>& d, std::vector<int>& i);
+		void add_material_data(material m);
 
 	private:
 		void create_instance();
@@ -163,5 +196,7 @@ namespace engine
 
 		void create_buffer(VkDeviceSize s, VkBufferUsageFlags u, VkMemoryPropertyFlags ps, VkBuffer& b, VkDeviceMemory& bm);
 		void copy_buffer(VkBuffer sb, VkBuffer db, VkDeviceSize s);
+
+		bool cmd_buffer_changed;
 	};
 }

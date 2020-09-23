@@ -4,9 +4,8 @@
 
 namespace engine
 {
-	struct ubo
+	struct mesh_ubo
 	{
-		vector2 pos1;
-		vector2 pos2;
+		vector3 pos = vector3(0.5, 0, 1);
 	};
 }
