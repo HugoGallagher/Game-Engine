@@ -99,7 +99,7 @@ namespace engine
 	{
 		cmd_buffer_changed = true;
 
-		int i = 0;
+		int i = renderer_objects.size();
 		for (int r = 0; r < renderer_objects.size(); r++)
 		{
 			if (renderer_objects[r].mesh_id == -1) // ID for invalid mesh
@@ -865,19 +865,22 @@ namespace engine
 
 			for (size_t j = 0; j < rd.mesh_index_start.size(); j++)
 			{
-				uint32_t ic = 0;
-				if (j == rd.mesh_index_start.size() - 1)
-					ic = (uint32_t)((rd.mesh_indicies.size()) - rd.mesh_index_start[j]);
-				else
-					ic = (uint32_t)(rd.mesh_index_start[j + 1] - rd.mesh_index_start[j]);
+				for (size_t k = 0; k < mesh_instances[j]; k++)
+				{
+					uint32_t ic = 0;
+					if (j == rd.mesh_index_start.size() - 1)
+						ic = (uint32_t)((rd.mesh_indicies.size()) - rd.mesh_index_start[j]);
+					else
+						ic = (uint32_t)(rd.mesh_index_start[j + 1] - rd.mesh_index_start[j]);
 
-				uint32_t is = mesh_instances[j];
-				uint32_t fi = (uint32_t)(rd.mesh_index_start[j] - rd.mesh_index_start[0]);
-				uint32_t vo = (uint32_t)(rd.mesh_vertex_start[j] - rd.mesh_vertex_start[0]);
-				uint32_t fis = j;
+					uint32_t is = mesh_instances[j];
+					uint32_t fi = (uint32_t)(rd.mesh_index_start[j] - rd.mesh_index_start[0]);
+					uint32_t vo = (uint32_t)(rd.mesh_vertex_start[j] - rd.mesh_vertex_start[0]);
+					uint32_t fis = j;
 
-				//vkCmdDrawIndexed(command_buffers[i], ic, is, fi, vo, fis);
-				vkCmdDrawIndexed(command_buffers[i], ic, is, fi, vo, fis);
+					//vkCmdDrawIndexed(command_buffers[i], ic, is, fi, vo, fis);
+					vkCmdDrawIndexed(command_buffers[i], ic, is, fi, vo, fis);
+				}
 			}
 
 			vkCmdEndRenderPass(command_buffers[i]);
@@ -970,8 +973,8 @@ namespace engine
 		vkUnmapMemory(device, mat_uniform_buffers_memory[ci]);
 
 		void* mesh_data;
-		vkMapMemory(device, mesh_uniform_buffers_memory[ci], 0, sizeof(mesh_data), 0, &mesh_data);
-		memcpy(mesh_data, &rd.mesh_data[0], sizeof(mesh_data));
+		vkMapMemory(device, mesh_uniform_buffers_memory[ci], 0, sizeof(mesh_ubo), 0, &mesh_data);
+		memcpy(mesh_data, &rd.mesh_data[0], sizeof(mesh_ubo));
 		vkUnmapMemory(device, mesh_uniform_buffers_memory[ci]);
 	}
 

@@ -31,8 +31,8 @@ void main()
 	int index = gl_InstanceIndex;
 	//int index = 0;
 
-	//gl_Position = vec4(in_pos, 1.0);
+	//gl_Position = vec4(in_pos.x + meshes[index].model.x, in_pos.y + gl_InstanceIndex, in_pos.z, 1.0);
 	gl_Position = vec4(meshes[index].model + in_pos, 1.0);
-	//f_col = vec3(meshes[index].model.x, 0, 0);
+	//f_col = vec3(gl_InstanceIndex, 0, 0);
 	f_col = mats[index].colour;
 }

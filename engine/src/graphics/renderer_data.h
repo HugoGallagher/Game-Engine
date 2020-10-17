@@ -43,7 +43,7 @@ namespace engine
 
 		void add_mesh(std::vector<vertex>& m, std::vector<int>& i)
 		{
-			for (int j : i)
+			for (int& j : i)
 				j += mesh_verticies.size();
 
 			mesh_verticies.reserve(mesh_verticies.size() + m.size());
@@ -59,7 +59,7 @@ namespace engine
 
 		renderer_data()
 		{
-			material m = material(vector3(1, 1, 0));
+			material m = material(vector3(1, 0, 0.01));
 			materials.push_back(m);
 
 			std::vector<vertex> verticies =
@@ -72,6 +72,20 @@ namespace engine
 			std::vector<int> indicies =
 			{
 				0, 1, 2, 1, 3, 2,
+			};
+			add_mesh(verticies, indicies);
+
+			verticies =
+			{
+				vertex(0, -0.5, 1, 0),
+				vertex(0.5, 0, 1, 0),
+				vertex(0.3, 0.5, 1, 0),
+				vertex(-0.3, 0.5, 1, 0),
+				vertex(-0.5, 0, 1, 0),
+			};
+			indicies =
+			{
+				0, 1, 2, 2, 3, 4, 0, 2, 4,
 			};
 			add_mesh(verticies, indicies);
 		}

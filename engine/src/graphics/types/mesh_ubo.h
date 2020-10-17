@@ -6,6 +6,6 @@ namespace engine
 {
 	struct mesh_ubo
 	{
-		vector3 pos = vector3(0.5, 0, 1);
+		vector3 pos = vector3(0, 0, 0);
 	};
 }

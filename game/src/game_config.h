@@ -68,9 +68,19 @@ namespace ecs_systems
 		std::cout << pos.x << ", " << pos.y << ", " << pos.z << std::endl;
 	}
 
+	//mesh
+	void set_mesh(float dt, engine::entity& e, engine::core_game_objects* cgo)
+	{
+		if (engine::input::key_down('1'))
+			std::cout << "asdf";
+			//e.get<motion>().velocity.y -= e.get<motion>().speed;
+	}
+
 	//transform, mesh
 	void update_mesh_ubo(float dt, engine::entity& e, engine::core_game_objects* cgo)
 	{
+		if (e.get<transform>().position.x != 0)
+			std::cout;
 		engine::mesh_ubo& mu = cgo->r->get_object(e.get<mesh>().id);
 		mu.pos.x += e.get<transform>().position.x;
 		mu.pos.y += e.get<transform>().position.y;
@@ -109,12 +119,15 @@ void game::init()
 	ecs.cgo = &cgo;
 	ecs.add_system<transform, motion, input>(0, ecs_systems::controller);
 	ecs.add_system<transform, motion>(1, ecs_systems::move);
-	ecs.add_system<transform>(2, ecs_systems::print_coords);
+	//ecs.add_system<transform>(2, ecs_systems::print_coords);
 	ecs.add_system<transform, mesh>(2, ecs_systems::update_mesh_ubo);
+	ecs.add_system<mesh>(2, ecs_systems::set_mesh);
 
-	engine::entity e1 = ecs.add_entity<transform, motion, mesh>(transform(), motion(3), mesh(0));
+	engine::entity e1 = ecs.add_entity<transform, motion, mesh>(transform(), motion(3), mesh(1));
+	//engine::entity e2 = ecs.add_entity<transform, motion, mesh>(transform(), motion(3), mesh(1));
 
 	renderer.add_object(0);
+	renderer.add_object(1);
 }
 
 void game::exit()
